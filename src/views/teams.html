@@ -1,39 +1,15 @@
+<div class="appbar">
+    <button ng-click="toggleDrawer()">
+        <i class="icon-reorder"></i>
+    </button>
+    <h1>
+        {{currentPage}}
+        <span ng-show="needSave">(Not saved)</span>
+        <span ng-hide="needSave">(Saved)</span>
+        <i ng-show="saving" class="icon-save"></i>
+    </h1>
+</div>
 <div ng-controller="teamsCtrl" id="teams">
-
-    <div class="teamImport" ng-show="importMode">
-        <p>
-            Paste a team list below
-        </p>
-        <p>
-            <textarea name="" ng-model="importRaw"></textarea>
-        </p>
-        <p>
-            <label>
-                <input type="checkbox" ng-model="importHeader">
-                Data contains header
-            </label>
-        </p>
-        <p>
-            Number column
-            <input type="text" ng-model="importNumberColumn" size="3">
-            ({{importNumberExample}})
-        </p>
-        <p>
-            Name column
-            <input type="text" ng-model="importNameColumn" size="3">
-            ({{importNameExample}})
-        </p>
-
-        <table>
-            <tr ng-repeat="line in importLines">
-                <td ng-repeat="field in line">
-                    {{field}}
-                </td>
-            </tr>
-        </table>
-        <button class="btn" ng-click="finishImport()">Ok</button>
-    </div>
-
     <form class="form-inline form-new-team" name="newTeamForm" ng-show="editMode">
         <span class="control-group" ng-class="{error:!newTeamForm.newTeamNumber.$valid}">
             <label class="control-label">
@@ -62,101 +38,104 @@
             <i class="icon-edit"></i> Edit
         </button>
     </p>
-    <h5>&nbsp;<i ng-show="saving" class="icon-save"></i></h5>
     <div class="alert alert-info" ng-show="status">
         <button type="button" class="close" ng-click="status=''">&times;</button>
         {{status}}
     </div>
 
-    <table class="table table-hover table-bordered table-striped table-teams smallLayoutHide mediumLayoutHide">
-        <thead>
-            <tr>
-                <th ng-click="sort='team.number';rev=true">#</th>
-                <th ng-click="sort='team.name';rev=false">Name</th>
-                <th ng-click="sort='team.cityState';rev=false">City (State)</th>
-                <th ng-click="sort='team.country';rev=false">Country</th>
-                <th ng-click="sort='team.affiliation';rev=false">Affiliation</th>
-                <th ng-click="sort='team.coach1';rev=false">Coach 1</th>
-                <th ng-click="sort='team.coach2';rev=false">Coach 2</th>
-                <th ng-click="sort='team.judgingGroup';rev=false">Judging Group</th>
-                <th ng-click="sort='team.pitLocation';rev=false">Pit Location</th>
-                <th ng-click="sort='team.translationNeeded';rev=false" style="width: 50px;">Translation</th>
+    <p>Showing {{teams.length}} teams.</p>
+    <div class="smallLayoutHide mediumLayoutHide">
+        <table class="table table-hover table-bordered table-striped table-teams">
+            <thead>
+                <tr>
+                    <th ng-click="sort='team.number';rev=true">#</th>
+                    <th ng-click="sort='team.name';rev=false">Name</th>
+                    <th ng-click="sort='team.cityState';rev=false">City (State)</th>
+                    <th ng-click="sort='team.country';rev=false">Country</th>
+                    <th ng-click="sort='team.affiliation';rev=false">Affiliation</th>
+                    <th ng-click="sort='team.coach1';rev=false">Coach 1</th>
+                    <th ng-click="sort='team.coach2';rev=false">Coach 2</th>
+                    <th ng-click="sort='team.judgingGroup';rev=false">Judging Group</th>
+                    <th ng-click="sort='team.pitLocation';rev=false">Pit Location</th>
+                    <th ng-click="sort='team.translationNeeded';rev=false" style="width: 50px;">Translation</th>
+                </tr>
+            </thead>
+            <tr ng-show="!editMode" ng-repeat="team in teams | orderBy:sort:rev  track by team.number" ng-click="selectTeam(team)">
+                <td>{{team.number}}</td>
+                <td>{{team.name}}</td>
+                <td>{{team.cityState}}</td>
+                <td>{{team.country}}</td>
+                <td>{{team.affiliation}}</td>
+                <td>{{team.coach1}}</td>
+                <td>{{team.coach2}}</td>
+                <td>{{team.judgingGroup}}</td>
+                <td>{{team.pitLocation}}</td>
+                <td><i ng-show="team.translationNeeded===true" class="icon-ok"></i></td>
             </tr>
-        </thead>
-        <tr ng-show="!editMode" ng-repeat="team in teams | index | orderBy:sort:rev" ng-click="selectTeam(team)">
-            <td>{{team.number}}</td>
-            <td>{{team.name}}</td>
-            <td>{{team.cityState}}</td>
-            <td>{{team.country}}</td>
-            <td>{{team.affiliation}}</td>
-            <td>{{team.coach1}}</td>
-            <td>{{team.coach2}}</td>
-            <td>{{team.judgingGroup}}</td>
-            <td>{{team.pitLocation}}</td>
-            <td><i ng-show="team.translationNeeded===true" class="icon-ok"></i></td>
-        </tr>
-        <tr ng-show="editMode" ng-repeat="team in teams | index | orderBy:sort:rev">
-            <td><input type="text" ng-model=team.number class="team-number" ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.name ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.cityState ng-blur="saveTeams()">
-            <td><input type="text" ng-model=team.country ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.affiliation ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.coach1 ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.coach2 ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.judgingGroup class="team-number" ng-blur="saveTeams()"></td>
-            <td><input type="text" ng-model=team.pitLocation class="team-number" ng-blur="saveTeams()"></td>
-            <td><input type="checkbox" ng-model=team.translationNeeded ng-change="saveTeams()"></td>
-            <td>
-                <span ng-show="editMode">
-                    <i class="icon-trash clickable" title="delete" fll-really-message="Sure to delete this team?" fll-really-click="removeTeam(team.number)"></i>
-                </span>
-            </td>
-        </tr>
-    </table>
+            <tr ng-show="editMode" ng-repeat="team in teams | orderBy:sort:rev" track by team.number>
+                <td><input type="text" ng-model=team.number class="team-number"></td>
+                <td><input type="text" ng-model=team.name></td>
+                <td><input type="text" ng-model=team.cityState>
+                <td><input type="text" ng-model=team.country></td>
+                <td><input type="text" ng-model=team.affiliation></td>
+                <td><input type="text" ng-model=team.coach1></td>
+                <td><input type="text" ng-model=team.coach2></td>
+                <td><input type="text" ng-model=team.judgingGroup class="team-number"></td>
+                <td><input type="text" ng-model=team.pitLocation class="team-number"></td>
+                <td><input type="checkbox" ng-model=team.translationNeeded></td>
+                <td>
+                    <span ng-show="editMode">
+                        <i class="icon-trash clickable" title="delete" fll-really-message="Sure to delete this team?" fll-really-click="removeTeam(team.number)"></i>
+                    </span>
+                </td>
+            </tr>
+        </table>
+    </div>
     <div class="largeLayoutHide">
-        <div ng-class="{clickable:!editMode}" class="team" ng-repeat="team in teams | index | orderBy:sort:ref" ng-click="isCollapsed = toggleExtended(isCollapsed)">
+        <div ng-class="{clickable:!editMode}" class="team" ng-repeat="team in teams | orderBy:sort:ref track by team.number" ng-click="isCollapsed = toggleExtended(isCollapsed)">
             <span ng-show="!editMode">({{team.number}}) {{team.name}}, {{team.cityState}}</span>
-            <input ng-show="editMode" ng-model="team.number" ng-blur="saveTeams()" class="team-number">
-            <input ng-show="editMode" ng-model="team.name" ng-blur="saveTeams()">
-            <input ng-show="editMode" ng-model="team.cityState" ng-blur="saveTeams()">
+            <input ng-show="editMode" ng-model="team.number" class="team-number">
+            <input ng-show="editMode" ng-model="team.name">
+            <input ng-show="editMode" ng-model="team.cityState">
             <button ng-show="editMode" class="btn" ng-class="{active:isCollapsed}" ng-click="isCollapsed=!isCollapsed">+</button>
             <div ng-class="{collapse:!isCollapsed}" class="extended">
                 <div>
                     <span class="title">Country</span>
                     <span ng-show="!editMode">{{team.country}}</span>
-                    <input ng-show="editMode" ng-model="team.country" ng-blur="saveTeams()">
+                    <input ng-show="editMode" ng-model="team.country">
                 </div>
                 <div>
                     <span class="title">Affiliation</span>
                     <span ng-show="!editMode">{{team.affiliation}}</span>
-                    <input ng-show="editMode" ng-model="team.affiliation" ng-blur="saveTeams()">
+                    <input ng-show="editMode" ng-model="team.affiliation">
                 </div>
                 <div>
                     <span class="title">Coach 1</span>
                     <span ng-show="!editMode">{{team.coach1}}</span>
-                    <input ng-show="editMode" ng-model="team.coach1" ng-blur="saveTeams()">
+                    <input ng-show="editMode" ng-model="team.coach1">
                 </div>
                 <div>
                     <span class="title">Coach 2</span>
                     <span ng-show="!editMode">{{team.coach2}}</span>
-                    <input ng-show="editMode" ng-model="team.coach2" ng-blur="saveTeams()">
+                    <input ng-show="editMode" ng-model="team.coach2">
                 </div>
                 <div>
                     <span class="title">Judging group</span>
                     <span ng-show="!editMode">{{team.judgingGroup}}</span>
-                    <input ng-show="editMode" ng-model="team.judgingGroup" ng-blur="saveTeams()">
+                    <input ng-show="editMode" ng-model="team.judgingGroup">
                 </div>
                 <div>
                     <span class="title">Pit location</span>
                     <span ng-show="!editMode">{{team.pitLocation}}</span>
-                    <input ng-show="editMode" ng-model="team.pitLocation" ng-blur="saveTeams()">
+                    <input ng-show="editMode" ng-model="team.pitLocation">
                 </div>
                 <div>
                     <span class="title">Translation needed</span>
                     <span ng-show="!editMode &amp;&amp; team.translationNeeded===true"><i class="icon-ok"></i></span>
-                    <input ng-show="editMode" type="checkbox" ng-model="team.translationNeeded" ng-change="saveTeams()">
+                    <input ng-show="editMode" type="checkbox" ng-model="team.translationNeeded">
                 </div>
             </div>
         </div>
     </div>
+    <p>Showing {{teams.length}} teams.</p>
 </div>

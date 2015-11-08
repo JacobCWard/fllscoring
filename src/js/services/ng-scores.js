@@ -229,26 +229,70 @@ define('services/ng-scores',[
             this._update();
         };
 
-        function sanitize(score) {
-            // Convert 'dirty' input score to a representation that we can store
-            // on a filesystem. This means e.g. not storing denormalized version of
-            // team and stage, but only their ID's. Additionally, forces values to be
-            // of the right type where possible.
+        /**
+         * Convert 'dirty' score value to correct type used during score
+         * computations etc.
+         * Valid inputs are fixed strings like "dnc" (Did Not Compete) and
+         * "dnq" (Did Not Qualify) in any combination of upper/lower case,
+         * null (dummy entry, maybe because score was removed) and numbers
+         * (also as strings). Empty string is converted to null.
+         * Invalid input is simply returned (and later marked as invalid
+         * during scoreboard computation).
+         */
+        function sanitizeScore(score) {
+            // Passthrough for already valid inputs
+            if (typeof score === "number")
+                return score;
+            switch (score) {
+                case "dnc":
+                case "dsq":
+                case null:
+                    return score;
+            }
+            // Accept numbers stored as strings
+            var n = parseInt(score, 10);
+            if (String(n) === score)
+                return n;
+            // Try to convert some spellings of accepted strings
+            if (typeof score === "string") {
+                var s = score.toLowerCase();
+                switch (s) {
+                    case "dnc":
+                    case "dsq":
+                        return s;
+                    case "":
+                        return null;
+                }
+            }
+            // Pass through the rest
+            log("Warning: invalid score " + score);
+            return score;
+        }
+
+        /**
+         * Convert 'dirty' input score entry to a representation that we can store
+         * on a filesystem. This means e.g. not storing denormalized version of
+         * team and stage, but only their ID's. Additionally, forces values to be
+         * of the right type where possible.
+         */
+        function sanitizeEntry(entry) {
             return {
-                file: (score.file !== undefined && score.file !== null) ? String(score.file) : "",
-                teamNumber: parseInt((score.teamNumber !== undefined) ? score.teamNumber : score.team.number, 10),
-                stageId: String((score.stageId !== undefined) ? score.stageId : score.stage.id),
-                round: parseInt(score.round, 10),
-                score: score.score, // can be Number, null, "dnc", etc.
-                originalScore: parseInt(score.originalScore !== undefined ? score.originalScore : score.score, 10),
-                edited: score.edited !== undefined ? String(score.edited) : undefined // timestamp, e.g. "Wed Nov 26 2014 21:11:43 GMT+0100 (CET)"
+                file: (entry.file !== undefined && entry.file !== null) ? String(entry.file) : "",
+                teamNumber: parseInt((entry.teamNumber !== undefined) ? entry.teamNumber : entry.team.number, 10),
+                stageId: String((entry.stageId !== undefined) ? entry.stageId : entry.stage.id),
+                round: parseInt(entry.round, 10),
+                score: sanitizeScore(entry.score), // can be Number, null, "dnc", etc.
+                originalScore: parseInt(entry.originalScore !== undefined ? entry.originalScore : entry.score, 10),
+                edited: entry.edited !== undefined ? String(entry.edited) : undefined, // timestamp, e.g. "Wed Nov 26 2014 21:11:43 GMT+0100 (CET)"
+                published: !!entry.published,
+                table: entry.table
             };
         }
 
         Scores.prototype.add = function(score) {
             // Create a copy of the score, in case the
             // original score is being modified...
-            this._rawScores.push(sanitize(score));
+            this._rawScores.push(sanitizeEntry(score));
             this._update();
         };
 
@@ -262,7 +306,7 @@ define('services/ng-scores',[
             if (index < 0 || index >= this._rawScores.length) {
                 throw new RangeError("unknown score index: " + index);
             }
-            var newScore = sanitize(score);
+            var newScore = sanitizeEntry(score);
             newScore.edited = (new Date()).toString();
             this._rawScores.splice(index, 1, newScore);
             this._update();
@@ -329,6 +373,7 @@ define('services/ng-scores',[
                             stageId: sheet.stageId !== undefined ? sheet.stageId : sheet.stage.id,
                             round: sheet.round,
                             score: sheet.score,
+                            table: sheet.table
                         };
                         self.add(score);
                         // Mark as processed
@@ -358,21 +403,75 @@ define('services/ng-scores',[
             }
 
             var self = this;
-            var board = this.scoreboard;
+            var results = this.getRankings();
 
-            // Clear existing properties
-            this.scores.splice(0, this.scores.length); // clear without creating new object
+            // Update global scores without creating a new object
+            var scores = results.scores;
+            scores.unshift(0, this.scores.length);
+            this.scores.splice.apply(this.scores, scores);
+
+            // Update global scoreboard without creating a new object
+            var board = this.scoreboard;
             var k;
-            for (k in board) {
-                if (!board.hasOwnProperty(k)) {
+            for (k in this.scoreboard) {
+                if (!this.scoreboard.hasOwnProperty(k)) {
                     continue;
                 }
-                delete board[k];
+                delete this.scoreboard[k];
+            }
+            Object.keys(results.scoreboard).forEach(function(stageId) {
+                self.scoreboard[stageId] = results.scoreboard[stageId];
+            });
+
+            // Update validation errors (useful for views)
+            this.validationErrors.splice(0, this.validationErrors.length);
+            this.scores.forEach(function(score) {
+                if (score.error) {
+                    self.validationErrors.push(score.error);
+                }
+            });
+            $rootScope.$broadcast('validationError', this.validationErrors);
+        };
+
+        /**
+         * Compute scoreboard and sanitized/validated scores.
+         *
+         * Optionally, pass an object containing stageId => nrOfRoundsOrTrue mapping.
+         * E.g. { "practice": true, "qualifying": 2 }, which computes the ranking
+         * for all rounds in the practice stage, and the first 2 rounds of the
+         * qualifying stage.
+         *
+         * Resulting object contains `scores` and `scoreboard` properties.
+         * If no stages filter is passed, all scores will be output.
+         * If a stages filter is passed, only valid and relevant scores are
+         * output.
+         *
+         * @param  stages Optional object stageId => nrOfRoundsOrTrue
+         * @return Results object with validated scores and per-stage rankings
+         */
+        Scores.prototype.getRankings = function(stages) {
+            var self = this;
+            var results = {
+                scores: [], // List of sanitized scores
+                scoreboard: {}, // Sorted rankings for each stage
+            };
+
+            var haveFilter = !!stages;
+            if (!stages) {
+                stages = {};
+                $stages.stages.forEach(function(stage) {
+                    stages[stage.id] = true;
+                });
             }
 
-            // Create empty lists for each stage
-            $stages.stages.forEach(function(stage) {
-                board[stage.id] = [];
+            // Convert number of stages to take to a number (i.e. Infinity when
+            // e.g. `true` is passed)
+            // And create empty lists for each stage
+            var board = results.scoreboard;
+            Object.keys(stages).forEach(function(stage) {
+                var s = stages[stage];
+                stages[stage] = typeof s === "number" && s || s && Infinity || 0;
+                board[stage] = [];
             });
 
             // Walk all scores, and put them in the corresponding round of each stage.
@@ -391,10 +490,12 @@ define('services/ng-scores',[
                     score: _score.score,
                     originalScore: _score.originalScore,
                     edited: _score.edited,
+                    published: _score.published,
+                    table: _score.table,
                     modified: false,
                     error: null
                 };
-                self.scores.push(s);
+                results.scores.push(s);
 
                 // Mark score as modified if there have been changes to the
                 // original entry
@@ -435,6 +536,11 @@ define('services/ng-scores',[
                     return;
                 }
 
+                // Ignore score if filtered
+                if (haveFilter && s.round > stages[s.stageId]) {
+                    return;
+                }
+
                 // Find existing entry for this team, or create one
                 var bteam;
                 var i;
@@ -445,9 +551,10 @@ define('services/ng-scores',[
                     }
                 }
                 if (!bteam) {
-                    var initialScores = new Array(s.stage.rounds);
-                    var initialEntries = new Array(s.stage.rounds);
-                    for (i = 0; i < s.stage.rounds; i++) {
+                    var maxRounds = Math.min(s.stage.rounds, stages[s.stageId]);
+                    var initialScores = new Array(maxRounds);
+                    var initialEntries = new Array(maxRounds);
+                    for (i = 0; i < maxRounds; i++) {
                         initialScores[i] = null;
                         initialEntries[i] = null;
                     }
@@ -571,14 +678,14 @@ define('services/ng-scores',[
                 });
             }
 
-            // Update validation errors (useful for views)
-            this.validationErrors.splice(0, this.validationErrors.length);
-            this.scores.forEach(function(score) {
-                if (score.error) {
-                    self.validationErrors.push(score.error);
-                }
-            });
-            $rootScope.$broadcast('validationError', this.validationErrors);
+            // Filter scores if requested
+            if (haveFilter) {
+                results.scores = results.scores.filter(function(score) {
+                    return !score.error && stages[score.stageId] && score.round <= stages[score.stageId];
+                });
+            }
+
+            return results;
         };
 
         return new Scores();

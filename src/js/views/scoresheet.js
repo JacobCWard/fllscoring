@@ -7,45 +7,67 @@ define('views/scoresheet',[
     'services/ng-teams',
     'services/ng-stages',
     'services/ng-settings',
+    'services/ng-handshake',
     'directives/sigpad',
     'directives/spinner',
+    'controllers/DescriptionDialogController',
+    'controllers/TeamDialogController',
+    'controllers/RoundDialogController',
     'angular'
 ], function(log, fs) {
     var moduleName = 'scoresheet';
+    var module = angular.module(moduleName, [
+        'DescriptionDialog',
+        'TeamDialog',
+        'RoundDialog'
+    ]);
 
-    return angular.module(moduleName, []).controller(moduleName + 'Ctrl', [
-        '$scope','$fs','$stages','$settings','$modal','$challenge','$window','$q','$teams',
-        function($scope,$fs,$stages,$settings,$modal,$challenge,$window,$q,$teams) {
+    return module.controller(moduleName + 'Ctrl', [
+        '$scope','$fs','$stages','$settings','$challenge','$window','$q','$teams','$handshake',
+        function($scope,$fs,$stages,$settings,$challenge,$window,$q,$teams,$handshake) {
             log('init scoresheet ctrl');
 
             // Set up defaults
             $scope.settings = {};
             $scope.missions = [];
+            $scope.strings = [];
 
             // add teams and stages to scope for selection
             $scope.teams = $teams.teams;
             $scope.stages = $stages.stages;
 
-
             $settings.init().then(function(res) {
                 $scope.settings = res;
-                load();
+                return $scope.load();
             });
 
-            function load() {
-                $challenge.load($scope.settings.challenge).then(function(defs) {
+            function generateId() {
+                var max = 0x100000000; // 8 digits
+                // Add current time to prevent Math.random() generating the same
+                // sequence if it's seeded with a constant. Not sure this is
+                // really needed, but better safe than sorry...
+                var num = (Math.floor(Math.random() * max) + Date.now()) % max;
+                // Convert to nice hex representation with padded zeroes, then strip that initial 1.
+                return (num + max).toString(16).slice(1);
+            }
+
+            $scope.load = function() {
+                return $challenge.load($scope.settings.challenge).then(function(defs) {
                     $scope.field = defs.field;
                     $scope.missions = defs.missions;
+                    $scope.strings = defs.strings;
                     $scope.objectiveIndex = defs.objectiveIndex;
                     angular.forEach($scope.missions,process);
-                    $scope.$apply();
-                }).fail(function() {
+                }).catch(function() {
                     //could not read field locally or remotely
                     $scope.errorMessage = 'Could not load field, please configure host in settings';
-                    $scope.$apply();
-                    alert($scope.errorMessage);
+                    $window.alert($scope.errorMessage);
                 });
-            }
+            };
+
+            $scope.getString = function(key) {
+                return $scope.strings[key]||key;
+            };
 
             function getObjectives(names) {
                 return names.map(function(dep) {
@@ -82,18 +104,11 @@ define('views/scoresheet',[
                             //do not count
                             return total;
                         }
-                        return total + res||0;
+                        return total + (res||0);
                     },0);
                 });
 
             }
-
-            $scope.inc = function(objective,amount) {
-                objective.value = Math.min(objective.max||Number.Infinity,(objective.value||0)+(amount||1));
-            };
-            $scope.dec = function(objective,amount) {
-                objective.value = Math.max(objective.min||0,(objective.value||0)-(amount||1));
-            };
 
             $scope.score = function() {
                 if (!$scope.missions) {return;}
@@ -124,221 +139,138 @@ define('views/scoresheet',[
                 return bonusScore + restScore;
             };
 
+            //lists reasons why the scoresheet cannot be saved
+            $scope.preventSaveErrors = function() {
+                var list = [];
+                if (!$scope.missions) {return list;}
+
+                function empty(val) {
+                    return val === undefined || val === null;
+                }
+                function errors() {
+                    return $scope.missions.some(function(mission) {
+                        return !!mission.errors.length;
+                    });
+                }
+                function inComplete() {
+                    return $scope.missions.some(function(mission) {
+                        return mission.objectives.some(function(objective) {
+                            return empty(objective.value);
+                        });
+                    });
+                }
+
+                if (empty($scope.stage)) {
+                    list.push('No stage selected');
+                }
+                if (empty($scope.round)) {
+                    list.push('No round selected');
+                }
+                if (empty($scope.team)) {
+                    list.push('No team selected');
+                }
+                if (errors()) {
+                    list.push('Some missions have errors');
+                }
+                if (inComplete()) {
+                    list.push('Some missions are incomplete');
+                }
+                if ($scope.settings.askTable && !$scope.table) {
+                    list.push('No table number entered');
+                }
+                if ($scope.settings.askReferee && !$scope.referee) {
+                    list.push('No referee entered');
+                }
+
+                return list;
+            };
+
             $scope.isSaveable = function() {
                 if (!$scope.missions) {return false;}
 
-                var val =
-                    $scope.stage !== undefined && $scope.stage !== null &&
-                    $scope.round !== undefined && $scope.round !== null &&
-                    $scope.team !== undefined && $scope.team !== null &&
-                    // $scope.signature !== undefined && $scope.signature !== null &&
-                    $scope.missions.every(function(mission) {
-                        return mission.objectives.every(function(objective) {
-                          return objective.value !== undefined && objective.value !== null;
-                        }) && mission.errors.length == 0;
-                    });
-
-                // console.log("saveable " + val);
-                return val;
+                return !$scope.preventSaveErrors().length;
             };
 
-            $scope.discard = function() {
+            $scope.clear = function() {
+                $scope.uniqueId = generateId();
                 $scope.signature = null;
                 $scope.team = null;
                 $scope.stage = null;
                 $scope.round = null;
+                $scope.table = null;
+                $scope.referee = null;
                 $scope.missions.forEach(function(mission) {
                     mission.objectives.forEach(function(objective) {
                         delete objective["value"];
                     });
                 });
-                console.log('discard');
+                log('scoresheet cleared');
             };
 
             //saves mission scoresheet
             //take into account a key: https://github.com/FirstLegoLeague/fllscoring/issues/5#issuecomment-26030045
             $scope.save = function() {
                 if (!$scope.team || !$scope.stage || !$scope.round) {
-                    alert('no team selected, do so first');
+                    $window.alert('no team selected, do so first');
                     return $q.reject(new Error('no team selected, do so first'));
                 }
-                //todo:
-                var fn = [
-                    'score',
-                    $scope.settings.table,
-                    $scope.team.number,
-                    +(new $window.Date())
-                ].join('_')+'.json';
 
                 var data = angular.copy($scope.field);
+                data.uniqueId = $scope.uniqueId;
                 data.team = $scope.team;
                 data.stage = $scope.stage;
                 data.round = $scope.round;
-                data.table = $scope.settings.table;
+                // data.table = $scope.settings.table;
+                data.table = $scope.table;
+                data.referee = $scope.referee;
                 data.signature = $scope.signature;
                 data.score = $scope.score();
 
+                var fn = [
+                    'score',
+                    data.stage.id,
+                    'round' + data.round,
+                    'table' + data.table,
+                    'team' + data.team.number,
+                    data.uniqueId
+                ].join('_')+'.json';
+
                 return $fs.write("scoresheets/" + fn,data).then(function() {
                     log('result saved');
-                    $scope.discard();
-                    alert('Thanks for submitting a score of '
-                        + data.score
-                        + ' points for team ( ' + data.team.number + ' ) ' + data.team.name
-                        + ' in ' + data.stage.name + ' ' + data.round + '.'
+                    $scope.clear();
+                    $window.alert('Thanks for submitting a score of ' +
+                        data.score +
+                        ' points for team (' + data.team.number + ') ' + data.team.name +
+                        ' in ' + data.stage.name + ' ' + data.round + '.'
                     );
                 },function() {
-                    alert('unable to write result');
+                    $window.alert('unable to write result');
                 });
             };
 
-            /* Methods used by Modal windows */
-            $scope.chooseTeam = function(team) {
-                $scope.team = team;
+            $scope.openDescriptionModal = function (mission) {
+                $handshake.$emit('showDescription',mission);
             };
 
-            $scope.$root.$on('chooseTeam',function(e,team) {
-                $scope.chooseTeam(team);
-            });
-
-            $scope.chooseStage = function(stage) {
-                $scope.stage = stage;
-            };
-
-            $scope.$root.$on('chooseStage',function(e,stage) {
-                $scope.chooseStage(stage);
-            });
-
-            $scope.chooseRound = function(round) {
-                $scope.round = round;
-            };
-
-            $scope.$root.$on('chooseRound',function(e,round) {
-                $scope.chooseRound(round);
-            });
-
-            $scope.openDescriptionModal = function (size, mission) {
-
-                var modalInstance = $modal.open({
-                  templateUrl: 'descriptionModalContent.html',
-                  controller: 'DescriptionModalInstanceCtrl',
-                  size: size,
-                  resolve: {
-                    mission: function () {
-                      return mission;
+            $scope.openTeamModal = function (teams) {
+                $handshake.$emit('chooseTeam',teams).then(function(result) {
+                    if (result) {
+                        $scope.team = result.team;
                     }
-                  }
                 });
+            };
 
-                modalInstance.result.then(function (selectedItem) {
-                  $scope.selected = selectedItem;
-                }, function () {
-                  log('Description dismissed at: ' + new Date());
-                });
-              };
-
-
-            $scope.openTeamModal = function (size, teams) {
-
-                var modalInstance = $modal.open({
-
-
-                  templateUrl: 'teamModalContent.html',
-                  controller: 'TeamModalInstanceCtrl',
-                  size: size,
-                  resolve: {
-                    teams: function () {
-                      return teams;
+            $scope.openRoundModal = function (stages) {
+                $handshake.$emit('chooseRound',stages).then(function(result) {
+                    if (result) {
+                        $scope.stage = result.stage;
+                        $scope.round = result.round;
                     }
-                  }
-                });
-
-                modalInstance.result.then(function (selectedTeam) {
-                    $scope.$root.$emit('chooseTeam',selectedTeam);
-                }, function () {
-                    log('Team select dismissed at: ' + new Date());
                 });
             };
 
-            $scope.openRoundModal = function (size, stages) {
-
-                var modalInstance = $modal.open({
-
-                  templateUrl: 'roundModalContent.html',
-                  controller: 'RoundModalInstanceCtrl',
-                  size: size,
-                  resolve: {
-                    stages: function () {
-                      return stages;
-                    }
-                  }
-                });
-
-                modalInstance.result.then(function (result) {
-                    $scope.$root.$emit('chooseStage',result.stage);
-                    $scope.$root.$emit('chooseRound',result.round);
-                }, function () {
-                    log('Round select dismissed at: ' + new Date());
-                });
-            };
-
-        }
-    ]).controller('DescriptionModalInstanceCtrl',[
-        '$scope', '$modalInstance', 'mission',
-        function ($scope, $modalInstance, mission) {
-
-          $scope.mission = mission;
-
-          $scope.ok = function () {
-            $modalInstance.close();
-          };
-
-          $scope.cancel = function () {
-            $modalInstance.dismiss('cancel');
-          };
-        }
-    ]).controller('TeamModalInstanceCtrl',[
-        '$scope', '$modalInstance', 'teams',
-        function ($scope, $modalInstance, teams) {
-
-            $scope.teams = teams;
-
-            $scope.selectTeamPop = function(team) {
-                $scope.team = team;
-            };
-
-            $scope.ok = function () {
-                $modalInstance.close($scope.team);
-            };
-
-            $scope.cancel = function () {
-                $modalInstance.dismiss('cancel');
-            };
-        }
-    ]).controller('RoundModalInstanceCtrl',[
-        '$scope', '$modalInstance', 'stages',
-        function ($scope, $modalInstance, stages) {
-
-            $scope.stages = stages;
-
-            $scope.selectRoundPop = function(stage, round) {
-                $scope.stage = stage;
-                $scope.round = round;
-            };
-
-            // function that should be in the lib:
-            $scope.getNumber = function(num) {
-                return new Array(num);
-            };
-
-            $scope.ok = function () {
-                log("after OK: " + $scope.round);
-                $modalInstance.close({"stage": $scope.stage, "round": $scope.round});
-
-            };
-
-            $scope.cancel = function () {
-                $modalInstance.dismiss('cancel');
-            };
+            // Initialize empty scoresheet (mostly uniqueId)
+            $scope.clear();
         }
     ]);
 });

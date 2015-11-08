@@ -1,6 +1,5 @@
-"use strict";
-
 describe('ng-scores',function() {
+    "use strict";
     var ngServices = factory('services/ng-services');
     var module = factory('services/ng-scores',{
         'services/ng-services': ngServices,
@@ -21,7 +20,8 @@ describe('ng-scores',function() {
         stageId: "test",
         round: 1,
         score: 150,
-        originalScore: 150
+        originalScore: 150,
+        published: false
     };
     var mockStage;
     var mockScore;
@@ -76,35 +76,13 @@ describe('ng-scores',function() {
         });
     }
 
-    describe('initialize',function() {
+    describe('init',function() {
         it('should load mock score initially',function() {
             expect(filteredScores()).toEqual([mockScore]);
         });
     });
 
-    describe('adding scores',function() {
-        it('should add a score to the list',function() {
-            $scores.clear();
-            expect(filteredScores()).toEqual([]);
-            $scores.add(mockScore);
-            expect(filteredScores()).toEqual([mockScore]);
-            // Duplicate scores are allowed in this stage
-            $scores.add(mockScore);
-            expect(filteredScores()).toEqual([mockScore, mockScore]);
-            expect($scores.validationErrors.length).toBeGreaterThan(0);
-        });
-    });
-
-    describe('loading',function() {
-        it('should load from scores.json',function() {
-            return $scores.load().then(function() {
-                expect(fsMock.read).toHaveBeenCalledWith('scores.json');
-                expect(filteredScores()).toEqual([mockScore]);
-            });
-        });
-    });
-
-    describe('clearing',function() {
+    describe('clear',function() {
         it('should clear the scores',function() {
             expect(filteredScores()).toEqual([mockScore]);
             $scores.clear();
@@ -112,7 +90,7 @@ describe('ng-scores',function() {
         });
     });
 
-    describe('saving',function() {
+    describe('save',function() {
         it('should write scores to scores.json',function() {
             return $scores.save().then(function() {
                 expect(fsMock.write).toHaveBeenCalledWith(
@@ -125,9 +103,32 @@ describe('ng-scores',function() {
                 );
             });
         });
+
+        it('should log an error if writing fails',function() {
+            fsMock.write.andReturn(Q.reject('write err'));
+            return $scores.save().then(function() {
+                expect(logMock).toHaveBeenCalledWith('scores write error','write err');
+            });
+        });
     });
 
-    describe('removing',function() {
+    describe('load',function() {
+        it('should load from scores.json',function() {
+            return $scores.load().then(function() {
+                expect(fsMock.read).toHaveBeenCalledWith('scores.json');
+                expect(filteredScores()).toEqual([mockScore]);
+            });
+        });
+
+        it('should log an error if loading fails',function() {
+            fsMock.read.andReturn(Q.reject('read err'));
+            return $scores.load().then(function() {
+                expect(logMock).toHaveBeenCalledWith('scores read error','read err');
+            });
+        });
+    });
+
+    describe('remove',function() {
         it('should remove the provided index', function() {
             expect(filteredScores()).toEqual([mockScore]);
             $scores.remove(0);
@@ -135,18 +136,94 @@ describe('ng-scores',function() {
         });
     });
 
-    describe('modification', function() {
-        it('should mark modified scores', function() {
+    describe('add',function() {
+        beforeEach(function() {
+            $scores.clear();
+            expect(filteredScores()).toEqual([]);
+        });
+        it('should add a score to the list', function() {
+            $scores.add(mockScore);
+            expect(filteredScores()).toEqual([mockScore]);
+        });
+        it('should allow duplicates', function() {
+            // Duplicate scores are 'allowed' during adding, but
+            // are rejected in scoreboard computation.
+            $scores.add(mockScore);
+            $scores.add(mockScore);
+            expect(filteredScores()).toEqual([mockScore, mockScore]);
+            expect($scores.validationErrors.length).toBeGreaterThan(0);
+        });
+        it('should accept numeric scores as strings', function() {
+            var tmp = angular.copy(mockScore);
+            tmp.score = String(tmp.score);
+            $scores.add(tmp);
+            // Note: the 'accepted' score should really be a number, not a string
+            expect($scores.scores[0].score).toEqual(150);
+            expect($scores.validationErrors.length).toEqual(0);
+        });
+        it('should accept and convert different casing for DNC', function() {
+            var tmp = angular.copy(mockScore);
+            tmp.score = "DnC";
+            $scores.add(tmp);
+            expect($scores.scores[0].score).toEqual("dnc");
+            expect($scores.validationErrors.length).toEqual(0);
+        });
+        it('should accept and convert different casing for DSQ', function() {
+            var tmp = angular.copy(mockScore);
+            tmp.score = "DsQ";
+            $scores.add(tmp);
+            expect($scores.scores[0].score).toEqual("dsq");
+            expect($scores.validationErrors.length).toEqual(0);
+        });
+        it('should reject but convert an empty score', function() {
+            var tmp = angular.copy(mockScore);
+            tmp.score = "";
+            $scores.add(tmp);
+            expect($scores.scores[0].score).toEqual(null);
+            expect($scores.validationErrors.length).toEqual(1);
+        });
+        it('should store the edited date of a score as string',function() {
+            var tmp = angular.copy(mockScore);
+            tmp.edited = new Date(2015,1,7);
+            $scores.add(tmp);
+            expect(typeof $scores.scores[0].edited).toBe('string');
+        });
+    });
+
+    describe('update', function() {
+        beforeEach(function() {
             $scores.clear();
             $scores.add(mockScore);
+        });
+        it('should mark modified scores', function() {
             mockScore.score++;
             // Simply changing the added score shouldn't matter...
             expect($scores.scores[0].score).toEqual(150);
             // ... but updating it should
             $scores.update(0, mockScore);
+            expect($scores.scores[0].originalScore).toEqual(150);
             expect($scores.scores[0].score).toEqual(151);
             expect($scores.scores[0].modified).toBeTruthy();
             expect($scores.scores[0].edited).toBeTruthy();
+        });
+        it('should accept numeric scores as strings',function() {
+            mockScore.score = "151";
+            $scores.update(0, mockScore);
+            // Note: the 'accepted' score should really be a number, not a string
+            expect($scores.scores[0].originalScore).toEqual(150);
+            expect($scores.scores[0].score).toEqual(151);
+        });
+        it('should throw an error if a score out of range is edited',function() {
+            var f = function() {
+                $scores.update(-1,mockScore);
+            };
+            expect(f).toThrow('unknown score index: -1');
+        });
+        it('should throw an error if a score out of range is edited',function() {
+            var f = function() {
+                $scores.update(1,mockScore);
+            };
+            expect(f).toThrow('unknown score index: 1');
         });
     });
 
@@ -247,6 +324,37 @@ describe('ng-scores',function() {
             ]);
         });
 
+        it("should allow filtering rounds", function() {
+            fillScores([
+                { team: team1, stage: mockStage, round: 1, score: 10 },
+                { team: team1, stage: mockStage, round: 2, score: 20 },
+                { team: team1, stage: mockStage, round: 3, score: 30 },
+                { team: team2, stage: mockStage, round: 1, score: 30 },
+                { team: team2, stage: mockStage, round: 2, score: 10 },
+                { team: team2, stage: mockStage, round: 3, score: 20 },
+                { team: team3, stage: mockStage, round: 1, score: 30 },
+                { team: team3, stage: mockStage, round: 2, score: 0 },
+                { team: team3, stage: mockStage, round: 3, score: 20 },
+            ]);
+            var filtered = $scores.getRankings({
+                "test": 2
+            });
+            var result = filtered.scoreboard["test"].map(function(entry) {
+                return {
+                    rank: entry.rank,
+                    teamNumber: entry.team.number,
+                    scores: entry.scores
+                };
+            });
+            // Note: for equal ranks, teams are sorted according
+            // to (ascending) team id
+            expect(result).toEqual([
+                { rank: 1, teamNumber: team2.number, scores: [30, 10] },
+                { rank: 2, teamNumber: team3.number, scores: [30, 0] },
+                { rank: 3, teamNumber: team1.number, scores: [10, 20] },
+            ]);
+        });
+
         it("should ignore but warn about scores for unknown rounds / stages", function() {
             fillScores([
                 { team: team1, stage: { id: "foo" }, round: 1, score: 0 },
@@ -267,11 +375,11 @@ describe('ng-scores',function() {
                 { team: team1, stage: mockStage, round: 3, score: Infinity },
                 { team: team2, stage: mockStage, round: 1, score: {} },
                 { team: team2, stage: mockStage, round: 2, score: true },
-                { team: team2, stage: mockStage, round: 3, score: "DSQ" }, // not sure whether we should allow this one
+                { team: team2, stage: mockStage, round: 3, score: 10000 },
             ], true);
             $scores.scores.forEach(function(score) {
                 expect(score.error).toBeInstanceOf($scores.InvalidScoreError);
-            })
+            });
             expect(board["test"].length).toEqual(0);
             expect($scores.validationErrors.length).toEqual(6);
         });
@@ -368,11 +476,44 @@ describe('ng-scores',function() {
                             stageId: "test",
                             round: 1,
                             score: 456,
-                            originalScore: 456
+                            originalScore: 456,
+                            published: false
                         }],
                         sheets: ["sheet_1.json"]
                     }
                 );
+            });
+        });
+
+        describe('error recovery',function() {
+            it('should continue with no sheets when a 404 is returned',function() {
+                fsMock.list.andReturn(Q.reject({status:404}));
+                $scores.save = jasmine.createSpy('save');
+                return $scores.pollSheets().then(function() {
+                    expect(fsMock.write).not.toHaveBeenCalled();
+                    expect($scores.save).not.toHaveBeenCalled();
+                });
+            });
+
+            it('throw an error if an http error is received',function() {
+                fsMock.list.andReturn(Q.reject({status:500,responseText:'server error',statusText:'foo'}));
+                return $scores.pollSheets().catch(function(err) {
+                    expect(err.message).toEqual('error 500 (foo): server error');
+                });
+            });
+
+            it('should rethrow the error if something just goes wrong',function() {
+                fsMock.list.andReturn(Q.reject(new Error('squeek')));
+                return $scores.pollSheets().catch(function(err) {
+                    expect(err.message).toEqual('squeek');
+                });
+            });
+
+            it('should throw an unknown error if strange stuff is returned',function() {
+                fsMock.list.andReturn(Q.reject('darn'));
+                return $scores.pollSheets().catch(function(err) {
+                    expect(err.message).toEqual('unknown error: darn');
+                });
             });
         });
     });

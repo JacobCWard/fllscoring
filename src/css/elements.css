@@ -1,5 +1,4 @@
 html,body {
-    overflow: hidden;
     margin: 0;
     padding: 0;
     height: 100%;
@@ -8,16 +7,14 @@ html,body {
 body {
     font-family: 'latolight', 'Segoe UI','helvetica','Arial';
     font-size: 18px;
-}
-.tablewrapper {
-
+    background-color: white;
 }
 
 h1 {
     font-family: 'latolight', 'Segoe UI Light','helvetica','Arial';
     color: dodgerblue;
     font-size: 32px;
-    padding: 0px 12px;
+    padding: 0 12px;
     font-weight: normal;
 }
 
@@ -65,44 +62,154 @@ table {
     }
 }
 
+/* app bar http://www.google.com/design/spec/layout/structure.html#structure-app-bar */
+@media screen {
+    .appbar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        right: 0;
+        height: 64px;
+        line-height: 64px;
+        background-color: dodgerblue;
+        padding-left: 4px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.26);
+        z-index: 1990;
+    }
+    .appbar button {
+        height: 48px;
+        width: 48px;
+        border: none;
+        padding: 12px;
+        background: none;
+        display: inline-block;
+        vertical-align: 3px;
+    }
+    .appbar button i {
+        font-size: 22px;
+        color: white;
+    }
+    .appbar h1 {
+        display: inline-block;
+        color: white;
+        text-transform: capitalize;
+    }
+    .appbar .appbar-actions {
+        position: absolute;
+        top: 6px;
+        right: 8px;
+    }
+}
+
+/* navigation drawer: http://www.google.com/design/spec/patterns/navigation-drawer.html */
+@media screen {
+    .drawer {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        /* The width of the side nav is equal to the width of the screen minus the height of the action bar */
+        max-width: -webkit-calc(100% - 64px);
+        max-width: calc(100% - 64px);
+        /* The maximum width of the nav drawer is 5 times the standard increment (56dp on mobile and 64dp on tablet). */
+        width: 320px;
+        background-color: white;
+        -webkit-transform: translate(-100%);
+        transform: translate(-100%);
+        -webkit-transition: -webkit-transform 0.2s;
+        transition: transform 0.2s;
+        z-index: 1998;
+        border-right: 1px solid rgba(0,0,0,0.14);
+    }
+    .drawer.visible {
+        -webkit-transform: translate(0);
+        transform: translate(0);
+        box-shadow: 0 2px 5px rgba(0,0,0,0.26);
+    }
+    .drawer .drawerLead {
+        /*height: 156px;*/
+        height: 64px;
+        /*background-color: red;*/
+        border-bottom: 1px solid rgba(0,0,0,0.14);
+        background-image: url('../img/colors4.png');
+        background-position: center;
+    }
+    .drawerShim {
+        opacity: 0;
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: black;
+        z-index: 1997;
+        -webkit-transition: opacity 0.2s;
+        transition: opacity 0.2s;
+        pointer-events: none;
+    }
+    .drawerShim.visible {
+        opacity: 0.5;
+        pointer-events: inherit;
+    }
+    .drawer .nav {
+        margin-top: 8px;
+    }
+    .drawer .nav li {
+        height: 48px;
+        line-height: 48px;
+    }
+    .drawer .nav li a {
+        padding: 0 16px;
+        cursor: pointer;
+    }
+    .drawer .nav li i {
+        width: 24px;
+        margin-right: 32px;
+        display: inline-block;
+        width: 20px;
+    }
+}
+
+/* main view */
+@media screen {
+    .viewMain {
+        overflow: hidden;
+        padding-top: 16px;
+    }
+    /* backgrounds */
+    .viewMain.scoresheet {
+        background-color: #FAFAFA;
+    }
+}
+
 /* small layout */
 @media screen and (max-width: 480px) {
+    .appbar {
+        height: 56px;
+    }
+    .drawer {
+        max-width: calc(100% - 56px);
+        width: 280px;
+    }
+    .drawer .drawerLead {
+        height: 56px;
+    }
     .viewMain {
-        transition: transform 0.2s;
-        -webkit-transition: -webkit-transform 0.2s;
-        width: 500%;
-        position: absolute;
-        top: 0px;
-        bottom: 0px;
-        margin-top: 79px;
+        margin-top: 56px;
+        overflow: hidden;
     }
+
     .viewMain > div {
-        width: 20%;
-        height: 100%;
-        float: left;
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
-        overflow-scrolling: touch;
+        display: none;
+        padding-bottom: 40px;
     }
-    .viewMain.teams {
-        transform: translateX(0);
-        -webkit-transform: translateX(0);
-    }
-    .viewMain.scoresheet {
-        transform: translateX(-20%);
-        -webkit-transform: translateX(-20%);
-    }
-    .viewMain.scores {
-        transform: translateX(-40%);
-        -webkit-transform: translateX(-40%);
-    }
-    .viewMain.ranking {
-        transform: translateX(-60%);
-        -webkit-transform: translateX(-60%);
-    }
-    .viewMain.settings {
-        transform: translateX(-80%);
-        -webkit-transform: translateX(-80%);
+
+    .viewMain.teams .view-teams,
+    .viewMain.scoresheet .view-scoresheet,
+    .viewMain.scores .view-scores,
+    .viewMain.ranking .view-ranking,
+    .viewMain.settings .view-settings {
+        display: block;
     }
 
     .btn-enum {
@@ -124,24 +231,20 @@ table {
 
 /* medium layout */
 @media screen and (min-width: 481px) and (max-width: 1024px) {
+    .appbar {
+        height: 64px;
+    }
+    .drawer {
+        max-width: calc(100% - 64px);
+        width: 320px;
+    }
     .viewMain {
-        position: absolute;
-        width: 100%;
-        top: 0px;
-        bottom: 0px;
-        margin-top: 50px;
+        margin-top: 64px;
+        overflow: hidden;
     }
     .viewMain > div {
-        background-color: white;
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
-        overflow-scrolling: touch;
-        position: absolute;
-        left: 0;
-        top: 0;
-        right: 0;
-        bottom: 0;
         display: none;
+        padding-bottom: 40px;
     }
 
     .viewMain.teams .view-teams,
@@ -154,10 +257,6 @@ table {
 
     .panel, #teams {
         padding: 5px;
-    }
-
-    .btn-enum {
-        font-weight: 500;
     }
 
     #teams .table-teams {
@@ -175,25 +274,29 @@ table {
 
 /* large layout */
 @media screen and (min-width: 1025px) {
+    .appbar {
+        height: 64px;
+        padding-left: 272px;
+    }
+    .drawer {
+        max-width: calc(100% - 64px);
+        width: 320px;
+        -webkit-transform: translate(0);
+        transform: translate(0);
+        box-shadow: none;
+    }
+    .drawerShim {
+        display: none;
+    }
     .viewMain {
-        position: absolute;
-        width: 100%;
-        top: 0px;
-        bottom: 0px;
-        margin-top: 50px;
+        margin-top: 64px;
+        margin-left: 320px;
+        overflow: hidden;
     }
     .viewMain > div {
-        background-color: white;
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
-        overflow-scrolling: touch;
-        position: absolute;
-        left: 0;
-        top: 0;
-        right: 0;
-        bottom: 0;
         padding: 0 10px;
         display: none;
+        padding-bottom: 40px;
     }
     .viewMain.teams .view-teams,
     .viewMain.scoresheet .view-scoresheet,

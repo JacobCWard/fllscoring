@@ -1,10 +1,12 @@
 describe('teams', function() {
 
     var module = factory('views/teams', {
-        'services/log': logMock
+        'services/log': logMock,
+        'services/ng-throttle': factory('services/ng-throttle'),
+        'controllers/TeamImportDialogController': factory('controllers/TeamImportDialogController')
     });
 
-    var $scope, controller, $httpBackend, $teams;
+    var $scope, controller, $httpBackend, $teams, handshakeMock;
     var mockTeam = {
         name: 'foo',
         number: 123,
@@ -31,128 +33,180 @@ describe('teams', function() {
         translationNeeded: false
     };
 
-    beforeEach(function() {
-        angular.mock.module(module.name);
-        angular.mock.inject(function($controller, $rootScope, _$httpBackend_) {
-            $scope = $rootScope.$new();
-            $httpBackend = _$httpBackend_;
-            $httpBackend.when('GET','http://fll.mobilesorcery.nl/api/public/teams/')
-            .respond([
-                mockRemoteTeam
-            ]);
-            $teams = createTeamsMock([mockTeam]);
-            controller = $controller('teamsCtrl', {
-                '$scope': $scope,
-                '$teams': $teams
-            });
-        });
-        return $scope.init();
-    });
-
-    beforeEach(function() {
-        //spy setPage method;
-        $scope.setPage = jasmine.createSpy('setPage');
-    })
-
-    describe('initialization', function() {
-        it('should initialize', function() {
-            expect($scope.teams).toEqual([mockTeam]);
-            expect($scope.newTeam).toEqual({});
-            expect($scope.editMode).toBe(false);
-        });
-
-    });
-
-    xdescribe('missing teams.json on storage',function() {
+    describe('missing teams.json on storage',function() {
         beforeEach(function() {
-            // TODO: this test is broken, because $scope.init() is already called
-            // before this test starts, as construction of the controller has
-            // been done by an earlier beforeEach() call.
-            // So, the teams have already been loaded.
-            $teams.teams = [];
-        })
+            angular.mock.module('services');
+            angular.mock.module(module.name);
+            angular.mock.inject(function($controller, $rootScope, $q) {
+                $scope = $rootScope.$new();
+                $teams = createTeamsMock([]);
+                handshakeMock = createHandshakeMock($q);
+                controller = $controller('teamsCtrl', {
+                    '$scope': $scope,
+                    '$teams': $teams,
+                    '$handshake': handshakeMock
+                });
+            });
+            return $scope.init();
+        });
+
         it('should initialize in editmode when no teams found on storage', function() {
             expect($scope.teams).toEqual([]);
             expect($scope.newTeam).toEqual({});
             expect($scope.editMode).toBe(true);
+            expect($scope.status).toBe('No stored teams found, you may add them by hand');
         });
     });
 
-    describe('load', function() {
-        it('should call the web service for new teams',function() {
-            $scope.load();
-            $scope.saveTeams = jasmine.createSpy('saveTeamsSpy').andReturn(Q.when());
-            $httpBackend.flush();
-            expect($scope.saveTeams).toHaveBeenCalled();
-            expect($scope.teams).toEqual([mockTeam])
+    describe('stored teams',function() {
+        beforeEach(function() {
+            angular.mock.module('TeamImportDialog');
+            angular.mock.module('services');
+            angular.mock.module(module.name);
+            angular.mock.inject(function($controller, $rootScope, _$httpBackend_,$q) {
+                $scope = $rootScope.$new();
+                $httpBackend = _$httpBackend_;
+                $teams = createTeamsMock([mockTeam]);
+                handshakeMock = createHandshakeMock($q);
+                controller = $controller('teamsCtrl', {
+                    '$scope': $scope,
+                    '$teams': $teams,
+                    '$handshake': handshakeMock
+                });
+            });
+            return $scope.init();
         });
-    });
 
-    describe('selectTeam', function() {
-        it('shoud select the scoresheet page', function() {
-            var team = mockTeam;
-            var eventSpy = jasmine.createSpy('eventSpy');
-            $scope.$root.$on('selectTeam', eventSpy);
-            $scope.selectTeam(team);
-            expect($scope.setPage).toHaveBeenCalledWith('scoresheet');
-            expect(eventSpy).toHaveBeenCalled();
-            expect(eventSpy.mostRecentCall.args[1]).toBe(team);
+        beforeEach(function() {
+            //spy setPage method;
+            $scope.setPage = jasmine.createSpy('setPage');
         });
-    });
 
-    describe('canAddTeam', function() {
-        it('should not allow adding when name or number is missing', function() {
-            $scope.newTeam = {};
-            expect($scope.canAddTeam()).toBe(false);
-        });
-    });
+        describe('initialization', function() {
+            it('should initialize', function() {
+                expect($scope.teams).toEqual([mockTeam]);
+                expect($scope.newTeam).toEqual({});
+                expect($scope.editMode).toBe(false);
+            });
 
-    describe('addTeam', function() {
-        it('should add the newTeam from scope to the teams list and blank the new team and save it', function() {
-            $scope.saveTeams = jasmine.createSpy('saveTeams').andReturn(Q.when());
-            $scope.newTeam = mockTeam;
-            $scope.addTeam();
-            expect($teams.add).toHaveBeenCalledWith(mockTeam);
-            expect($scope.newTeam).toEqual({});
-            expect($scope.saveTeams).toHaveBeenCalled();
         });
-        it('should not add a team when data is incomplete', function() {
-            $scope.saveTeams = jasmine.createSpy('saveTeams').andReturn(Q.when());
-            $scope.newTeam = {foo:'bar'};
-            $scope.addTeam();
-            expect($teams.add).not.toHaveBeenCalled();
-            expect($scope.newTeam).toEqual({foo:'bar'});
-            expect($scope.saveTeams).not.toHaveBeenCalled();
-        });
-    });
 
-    describe('removeTeam', function() {
-        it('should remove the team with the given index', function() {
-            $scope.saveTeams = jasmine.createSpy('saveTeams').andReturn(Q.when());
-            $scope.removeTeam(123);
-            expect($teams.remove).toHaveBeenCalledWith(123);
-            expect($scope.saveTeams).toHaveBeenCalled();
+        describe('load', function() {
+            it('should call the web service for new teams',function() {
+                $httpBackend.when('GET','http://fll.mobilesorcery.nl/api/public/teams/')
+                    .respond([
+                        mockRemoteTeam
+                    ]);
+                $scope.load();
+                $scope.saveTeams = jasmine.createSpy('saveTeamsSpy').andReturn(Q.when());
+                $httpBackend.flush();
+                expect($teams.clear).toHaveBeenCalled();
+                expect($scope.saveTeams).toHaveBeenCalled();
+                expect($scope.teams).toEqual([mockTeam]);
+            });
+            it('should log failing get when teams cannot be found',function() {
+                $httpBackend.when('GET','http://fll.mobilesorcery.nl/api/public/teams/')
+                    .respond(404);
+                $scope.load();
+                $httpBackend.flush();
+                expect(logMock).toHaveBeenCalledWith('failed retrieving teams');
+            });
         });
-    });
 
-    describe('saveTeams', function() {
-        it('should call $teams.save', function() {
-            $scope.teams = [mockTeam];
-            $scope.saveTeams();
-            expect($teams.save).toHaveBeenCalled();
-        });
-    });
+        describe('import',function() {
+            it('should emit the importTeams handshake and add teams on result',function() {
+                handshakeMock.respond({
+                    teams: [{number:42,name:'foo'}]
+                });
+                $scope.import();
+                expect(handshakeMock.$emit).toHaveBeenCalledWith('importTeams');
+                $scope.$digest();
+                expect($teams.add).toHaveBeenCalledWith({number:42,name:'foo'});
+            });
 
-    describe('toggleExtended',function() {
-        it('should not toggle when in edit mode',function() {
-            $scope.editMode = true;
-            expect($scope.toggleExtended(true)).toBe(true);
-            expect($scope.toggleExtended(false)).toBe(false);
+            it('should be ok when no result is returned',function() {
+                $scope.import();
+                expect(handshakeMock.$emit).toHaveBeenCalledWith('importTeams');
+                $scope.$digest();
+                expect($teams.add).not.toHaveBeenCalled();
+            });
         });
-        it('should toggle when not in edit mode',function() {
-            $scope.editMode = false;
-            expect($scope.toggleExtended(true)).toBe(false);
-            expect($scope.toggleExtended(false)).toBe(true);
+
+        describe('selectTeam', function() {
+            it('shoud select the scoresheet page', function() {
+                var team = mockTeam;
+                var eventSpy = jasmine.createSpy('eventSpy');
+                $scope.$root.$on('selectTeam', eventSpy);
+                $scope.selectTeam(team);
+                expect($scope.setPage).toHaveBeenCalledWith('scoresheet');
+                expect(eventSpy).toHaveBeenCalled();
+                expect(eventSpy.mostRecentCall.args[1]).toBe(team);
+            });
+        });
+
+        describe('canAddTeam', function() {
+            it('should not allow adding when name or number is missing', function() {
+                $scope.newTeam = {};
+                expect($scope.canAddTeam()).toBe(false);
+            });
+        });
+
+        describe('addTeam', function() {
+            it('should add the newTeam from scope to the teams list and blank the new team and save it', function() {
+                $scope.saveTeams = jasmine.createSpy('saveTeams').andReturn(Q.when());
+                $scope.newTeam = mockTeam;
+                $scope.addTeam();
+                expect($teams.add).toHaveBeenCalledWith(mockTeam);
+                expect($scope.newTeam).toEqual({});
+                expect($scope.saveTeams).toHaveBeenCalled();
+            });
+            it('should not add a team when data is incomplete', function() {
+                $scope.saveTeams = jasmine.createSpy('saveTeams').andReturn(Q.when());
+                $scope.newTeam = {foo:'bar'};
+                $scope.addTeam();
+                expect($teams.add).not.toHaveBeenCalled();
+                expect($scope.newTeam).toEqual({foo:'bar'});
+                expect($scope.saveTeams).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('removeTeam', function() {
+            it('should remove the team with the given index', function() {
+                $scope.saveTeams = jasmine.createSpy('saveTeams').andReturn(Q.when());
+                $scope.removeTeam(123);
+                expect($teams.remove).toHaveBeenCalledWith(123);
+                expect($scope.saveTeams).toHaveBeenCalled();
+            });
+        });
+
+        describe('saveTeams', function() {
+            it('should call $teams.save', function() {
+                $scope.teams = [mockTeam];
+                $scope.saveTeams();
+                expect($teams.save).toHaveBeenCalled();
+            });
+        });
+
+        describe('watching teams change',function() {
+            it('should save if teams change',function() {
+                $scope.saveTeams = jasmine.createSpy('saveTeams');
+                $scope.teams[0].name = 'newName';
+                $scope.$digest();
+                expect($scope.saveTeams).toHaveBeenCalled();
+            });
+        });
+
+        describe('toggleExtended',function() {
+            it('should not toggle when in edit mode',function() {
+                $scope.editMode = true;
+                expect($scope.toggleExtended(true)).toBe(true);
+                expect($scope.toggleExtended(false)).toBe(false);
+            });
+            it('should toggle when not in edit mode',function() {
+                $scope.editMode = false;
+                expect($scope.toggleExtended(true)).toBe(false);
+                expect($scope.toggleExtended(false)).toBe(true);
+            });
         });
     });
 });

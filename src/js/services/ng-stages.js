@@ -71,7 +71,8 @@ define('services/ng-stages',[
                 log('stages using defaults');
                 self.add({ id: "practice", name: "Oefenrondes", rounds: 2 });
                 self.add({ id: "qualifying", name: "Voorrondes", rounds: 3 });
-                self.add({ id: "quarter", name: "Kwart finales", rounds: 0 });
+                self.add({ id: "eighth", name: "Achtste finales", rounds: 0 });
+                self.add({ id: "quarter", name: "Kwartfinales", rounds: 0 });
                 self.add({ id: "semi", name: "Halve finales", rounds: 0 });
                 self.add({ id: "final", name: "Finale", rounds: 1 });
             });
@@ -103,6 +104,31 @@ define('services/ng-stages',[
                 name: String(stage.name),
                 rounds: parseInt(stage.rounds, 10),
             });
+            this._update();
+        };
+
+        Stages.prototype.updateStage = function(stage) {
+            var rawStage = this._rawStages[stage.index];
+            if (rawStage) {
+                angular.extend(rawStage,stage);
+                this._update();
+            } else {
+                throw new Error("stage with " + stage.id + " cannot be found");
+            }
+        };
+
+        /**
+         * move stage by a specified amount of steps
+         * clipping to top or bottom of the list
+         */
+        Stages.prototype.moveStage = function(stage,steps) {
+            var oldIndex = stage.index;
+            var rawStage = this._rawStages[oldIndex];
+            //remove from the list
+            this._rawStages.splice(oldIndex,1);
+            //calculate insert position
+            var newIndex = Math.max(0,Math.min(this._rawStages.length,oldIndex + steps));
+            this._rawStages.splice(newIndex,0,rawStage);
             this._update();
         };
 

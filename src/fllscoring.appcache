@@ -1,9 +1,9 @@
 CACHE MANIFEST
-#2014-11-25 1932
+#2015-11-01 1145
 
 CACHE:
 index.html
-scoring.html
+admin.html
 views/main.html
 views/mainScoring.html
 views/ranking.html
@@ -42,7 +42,6 @@ js/services/fs-pg.js
 js/services/fs-xhr.js
 js/services/log.js
 js/services/ng-challenge.js
-js/services/ng-connect.js
 js/services/ng-fs.js
 js/services/ng-scores.js
 js/services/ng-services.js

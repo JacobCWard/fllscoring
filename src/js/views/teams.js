@@ -1,15 +1,20 @@
 define('views/teams',[
     'services/log',
     'services/ng-teams',
+    'services/ng-handshake',
+    'services/ng-throttle',
+    'controllers/TeamImportDialogController',
     'angular'
 ], function(log) {
     var moduleName = 'teams';
 
-    return angular.module(moduleName, []).config(['$httpProvider', function($httpProvider) {
+    return angular.module(moduleName, [
+            'TeamImportDialog'
+        ]).config(['$httpProvider', function($httpProvider) {
             delete $httpProvider.defaults.headers.common["X-Requested-With"];
         }]).controller(moduleName + 'Ctrl', [
-        '$scope','$http','$q','$teams',
-        function($scope,$http,$q,$teams) {
+        '$scope','$http','$q','$teams','$handshake','$throttle',
+        function($scope,$http,$q,$teams,$handshake,$throttle) {
 
             log('init teams ctrl');
             $scope.log = log.get();
@@ -18,6 +23,7 @@ define('views/teams',[
             $scope.editMode = false;
             $scope.teamNumberPattern = /^\d+$/;
             $scope.status = "Initializing...";
+            $scope.importMode = false;
 
             var initialized = null;
 
@@ -63,58 +69,18 @@ define('views/teams',[
             };
 
             $scope.import = function() {
-                $scope.importMode = true;
-                $scope.importRaw = '';
-            };
-
-            $scope.finishImport = function() {
-                $scope.importMode = false;
-                $teams.clear();
-                $scope.importLines.forEach(function(line) {
-                    $teams.add({
-                        number: line[$scope.importNumberColumn -1],
-                        name: line[$scope.importNameColumn -1]
-                    });
+                $handshake.$emit('importTeams').then(function(result) {
+                    if (result) {
+                        $teams.clear();
+                        result.teams.forEach(function(team) {
+                            $teams.add({
+                                number: team.number,
+                                name: team.name
+                            });
+                        });
+                    }
                 });
             };
-
-            $scope.$watch('importRaw',function(data) {
-                if (!data) {
-                    return;
-                }
-                parseData($scope.importRaw);
-            });
-
-            $scope.$watch('importHeader',function(data) {
-                if (!data) {
-                    return;
-                }
-                parseData($scope.importRaw);
-            });
-
-            function parseData(data) {
-                //parse raw import, split lines
-                var lines = data.split(/[\n\r]/);
-                if ($scope.importHeader) {
-                    lines.shift();
-                }
-                lines = lines.map(function(line) {
-                    //split by tab character
-                    return line.split(/\t/);
-                });
-                //try to guess names and number columns
-                $scope.importNumberColumn = 1;
-                $scope.importNameColumn = 2;
-
-                if (lines[0]) {
-                    $scope.importNumberExample = lines[0][$scope.importNumberColumn -1];
-                    $scope.importNameExample = lines[0][$scope.importNameColumn -1];
-                }
-
-                $scope.importLines = lines;
-            }
-
-
 
             $scope.selectTeam = function(team) {
                 $scope.setPage('scoresheet');
@@ -139,7 +105,7 @@ define('views/teams',[
                 return $scope.saveTeams();
             };
 
-            $scope.saveTeams = function() {
+            $scope.saveTeams = $throttle(function() {
                 $scope.saving = true;
                 // Teams used to be managed by the scope, but
                 // that's now moved to a service.
@@ -148,6 +114,8 @@ define('views/teams',[
                 // To make transition to the service smooth and quick,
                 // we simply copy the desired-teams-list, and (re-)add
                 // these to the teams service.
+
+                //TODO: this is a performance killer as it rebuilds the entire page on every save
                 var newTeams = $scope.teams.slice();
                 $teams.clear();
                 newTeams.forEach(function(team) {
@@ -155,8 +123,16 @@ define('views/teams',[
                 });
                 return $teams.save().finally(function() {
                     $scope.saving = false;
+                    $scope.needSave = false;
                 });
-            };
+            },5000);
+
+            $scope.$watch('teams',function(newValue, oldValue) {
+                if (!angular.equals(newValue,oldValue)) {
+                    $scope.needSave = true;
+                    $scope.saveTeams();
+                }
+            },true);
 
             $scope.toggleExtended = function(isCollapsed) {
                 if ($scope.editMode) {

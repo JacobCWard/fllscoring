@@ -1,21 +1,29 @@
+<div class="appbar">
+    <button ng-click="toggleDrawer()">
+        <i class="icon-reorder"></i>
+    </button>
+    <h1>{{currentPage}}</h1>
+</div>
 <div ng-controller="scoresCtrl">
     <button class="btn" ng-click="pollSheets()"><i class="icon-repeat"></i> Check for new scores</button>
     <button class="btn" ng-click="refresh()"><i class="icon-repeat"></i> Refresh scores</button>
     <br />
     <br />
+    <p>Showing {{scores.length}} scores.</p>
     <table class="table table-bordered table-striped">
         <thead>
             <tr>
                 <th ng-click="doSort('index',true)">#</th>
                 <th ng-click="doSort(['stage.index','-index'],false)">Stage</th>
                 <th ng-click="doSort(['stage.index','round','-index'],false)">Round</th>
+                <th ng-click="doSort('table',false)">Table</th>
                 <th ng-click="doSort('team.number',false)">Team</th>
                 <th ng-click="doSort('team.name',false)">Name</th>
                 <th ng-click="doSort('score',true)">Score</th>
                 <th>Action</th>
             </tr>
         </thead>
-        <tr ng-repeat="score in scores | index | orderBy:sort:rev" ng-class="{error: score.error, warning: score.modified}">
+        <tr ng-repeat="score in scores | index | orderBy:sort:rev track by score.index" ng-class="{error: score.error, warning: score.modified && !score.error}">
             <td>{{score.index + 1}}</td>
             <td>
                 <i class="icon-exclamation-sign" ng-show="score.error.name == 'UnknownStageError'" title="{{score.error.message}}"></i>
@@ -32,7 +40,15 @@
                     {{score.round}}
                 </span>
                 <span ng-if="score.$editing">
-                    <input type="text" ng-model="score.round">
+                    <input style="width:50px" type="text" ng-model="score.round">
+                </span>
+            </td>
+            <td>
+                <span ng-if="!score.$editing">
+                    {{score.table}}
+                </span>
+                <span ng-if="score.$editing">
+                    <input style="width:50px" type="text" ng-model="score.table">
                 </span>
             </td>
             <td>
@@ -41,7 +57,7 @@
                     {{score.team.number}}
                 </span>
                 <span ng-if="score.$editing">
-                    <input type="text" ng-model="score.teamNumber">
+                    <input style="width:50px" type="text" ng-model="score.teamNumber">
                 </span>
             </td>
             <td>{{score.team.name}}</td>
@@ -51,11 +67,23 @@
                     {{score.score}}
                 </span>
                 <span ng-if="score.$editing">
-                    <input type="text" ng-model="score.score">
+                    <input style="width:50px" type="text" ng-model="score.score">
                 </span>
                 <i class="icon-exclamation-sign" ng-show="score.error.name == 'DuplicateScoreError'" title="{{score.error.message}}"></i>
             </td>
             <td>
+                <button class="btn"
+                    ng-if="!score.published"
+                    ng-click="publishScore(score.index)"
+                >
+                    Publish
+                </button>
+                <button class="btn"
+                    ng-if="score.published"
+                    ng-click="unpublishScore(score.index)"
+                >
+                    Unpublish
+                </button>
                 <button class="btn btn-default"
                     ng-if="!score.$editing"
                     ng-click="editScore(score.index)"
@@ -86,4 +114,5 @@
             </td>
         </tr>
     </table>
+    <p>Showing {{scores.length}} scores.</p>
 </div>
